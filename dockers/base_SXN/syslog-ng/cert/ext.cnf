@@ -1,0 +1,4 @@
+basicConstraints=CA:FALSE
+keyUsage = digitalSignature, keyEncipherment
+extendedKeyUsage = serverAuth
+subjectAltName = IP:192.168.2.2, DNS:server.syslog.local

@@ -1,0 +1,85 @@
+# ============================================
+# Portable SXN Demo — Gitignore
+# ============================================
+
+##############################
+# 1. Logs / outputs runtime
+##############################
+
+logs/
+*.log
+
+# syslog-ng logs
+dockers/base_SXN/syslog-ng/logs/
+dockers/base_SXN/syslog-ng/cert/ca.pem
+dockers/base_SXN/syslog-ng/cert/server*
+dockers/base_SXN/syslog-ng/cert/client*
+dockers/base_SXN/syslog-ng/cert/*.p12
+dockers/base_SXN/syslog-ng/cert/*.p12.b64
+dockers/base_SXN/syslog-ng/cert/*.cer
+dockers/base_SXN/syslog-ng/cert/*.crt
+dockers/base_SXN/syslog-ng/cert/*.key
+
+# SNMP traps persistent logs
+dockers/base_SXN/zabbix-snmptraps/logs/
+
+##############################
+# 2. Docker-generated / runtime files
+##############################
+
+dockers/base_SXN/docker-compose.yml
+dockers/base_SXN/syslog-ng/syslog-ng.conf
+
+##############################
+# 3. TIO / LUA scripts auto-générés
+##############################
+
+tio/base_SXN/*.lua
+
+##############################
+# 4. Certificats, PKI, secrets
+##############################
+
+*.pem
+*.key
+*.crt
+*.cer
+*.csr
+*.der
+*.p12
+*.pfx
+*.b64
+
+##############################
+# 6. Systèmes / éditeurs
+##############################
+
+# macOS
+.DS_Store
+
+# Linux / misc
+*.swp
+*.swo
+
+# VSCode
+.vscode/
+
+##############################
+# 7. Python (si outils futurs)
+##############################
+
+__pycache__/
+*.pyc
+
+##############################
+# 8. Shell temp
+##############################
+
+*.tmp
+*.bak
+
+##############################
+# 9. Certs internes SXN
+##############################
+
+tio/base_SXN/cert_*.*
