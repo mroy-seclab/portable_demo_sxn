@@ -152,41 +152,6 @@ RUNTIME_NTP_ENABLE_B=""
 DEV_A=""
 DEV_B=""
 
-##############################################
-# 2bis. Prompts pour choisir les creds SXN (global)
-##############################################
-
-prompt_runtime_params() {
-  echo
-  echo "=== Configuration des paramètres SXN (global) ==="
-  echo "(Entrée = valeurs par défaut du .env)"
-
-  local input
-
-  # ----------- User SXN -----------
-  read -rp "Nom d'utilisateur SXN [${SXN_ADMIN_USER}] : " input
-  if [[ -n "$input" ]]; then
-    SXN_ADMIN_USER="$input"
-  fi
-
-  # ----------- Password SXN -----------
-  read -rsp "Mot de passe SXN [${SXN_ADMIN_PASSWORD}] : " input
-  echo
-  if [[ -n "$input" ]]; then
-    SXN_ADMIN_PASSWORD="$input"
-  fi
-
-  export SXN_ADMIN_USER
-  export SXN_ADMIN_PASSWORD
-
-  echo
-  echo "[OK] Paramètres globaux SXN :"
-  echo "  → User SXN             : ${SXN_ADMIN_USER}"
-  echo "  → Password SXN         : (caché)"
-  echo
-  sleep 1
-}
-
 ########################################
 # 3. Détection des gates via tio
 ########################################
@@ -720,6 +685,57 @@ interactive_network_params() {
   echo
 }
 
+interactive_gate_credentials_params() {
+  local gate="$1"
+  local input
+
+  echo
+  echo "=== Configuration des identifiants SXN pour gate ${gate} ==="
+  echo "(Entrée = valeur par défaut du .env)"
+
+  # Charger les defaults par gate
+  case "${gate}" in
+    A)
+      local default_user="${GATE_A_SXN_ADMIN_USER}"
+      local default_pass="${GATE_A_SXN_ADMIN_PASSWORD}"
+      ;;
+    B)
+      local default_user="${GATE_B_SXN_ADMIN_USER}"
+      local default_pass="${GATE_B_SXN_ADMIN_PASSWORD}"
+      ;;
+    *)
+      die "Gate inconnue dans interactive_gate_credentials_params(): ${gate}"
+      ;;
+  esac
+
+  # ----------- User SXN -----------
+  read -rp "Nom d'utilisateur SXN [${default_user}] : " input
+  if [[ -n "${input}" ]]; then
+    SXN_ADMIN_USER="${input}"
+  else
+    SXN_ADMIN_USER="${default_user}"
+  fi
+
+  # ----------- Password SXN -----------
+  read -rsp "Mot de passe SXN [${default_pass}] : " input
+  echo
+  if [[ -n "${input}" ]]; then
+    SXN_ADMIN_PASSWORD="${input}"
+  else
+    SXN_ADMIN_PASSWORD="${default_pass}"
+  fi
+
+  export SXN_ADMIN_USER
+  export SXN_ADMIN_PASSWORD
+
+  echo
+  echo "[OK] Identifiants SXN pour gate ${gate} :"
+  echo "  → User     : ${SXN_ADMIN_USER}"
+  echo "  → Password : (caché)"
+  echo
+}
+
+
 ########################################
 # 7. Exécution setup_tio pour une gate
 ########################################
@@ -953,6 +969,7 @@ main() {
       DEVICE="${DEV_A}"
 
       if yes_no_default_yes "Configurer la gate A maintenant ?"; then
+          interactive_gate_credentials_params "${GATE}"
           if maybe_apply_defaults_for_gate; then
             [[ -n "${GATE_ENO0_IP:-}" ]] && configure_interface_lua "eno0" "${GATE_ENO0_IP}" "${DEVICE}"
             [[ -n "${GATE_ENO1_IP:-}" ]] && configure_interface_lua "eno1" "${GATE_ENO1_IP}" "${DEVICE}"
@@ -977,6 +994,7 @@ main() {
       DEVICE="${DEV_B}"
 
       if yes_no_default_yes "Configurer la gate B maintenant ?"; then
+          interactive_gate_credentials_params "${GATE}"
           if maybe_apply_defaults_for_gate; then
             [[ -n "${GATE_ENO0_IP:-}" ]] && configure_interface_lua "eno0" "${GATE_ENO0_IP}" "${DEVICE}"
             [[ -n "${GATE_ENO1_IP:-}" ]] && configure_interface_lua "eno1" "${GATE_ENO1_IP}" "${DEVICE}"
