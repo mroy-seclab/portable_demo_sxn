@@ -14,6 +14,7 @@ Usage: $0 -c <config.env> [-m <mode>]
         all      : config SXN (A puis B) + stack Docker (défaut)
         sxn      : seulement configuration SXN (A puis B)
         dockers  : seulement stack Docker
+        usecases: seulement configuration des use cases SXN (scénarios slots)
 
 Exemples :
   $0 -c config/sxn_lab.env
@@ -35,7 +36,7 @@ while getopts ":c:m:h" opt; do
 done
 
 case "${MODE}" in
-  all|sxn|dockers) ;;
+  all|sxn|dockers|usecases) ;;
   *)
     echo "[ERREUR] Mode inconnu: ${MODE}" >&2
     usage
@@ -68,6 +69,7 @@ LIB_DIR="${ROOT_DIR}/lib"
 source "${LIB_DIR}/common.sh"
 
 DOCKER_SCRIPT="${ROOT_DIR}/dockers/base_SXN/setup_dockers_base_sxn.sh"
+UC_DOCKER_SCRIPT="${ROOT_DIR}/dockers/UC/setup_uc_service.sh"
 TIO_SCRIPT="${ROOT_DIR}/tio/setup_tio_base_sxn.sh"
 BASE_LUA_DIR="${ROOT_DIR}/tio/base_SXN"
 DETECT_LUA="${BASE_LUA_DIR}/detect_gate.lua"
@@ -81,6 +83,11 @@ fi
 if [[ ! -x "${TIO_SCRIPT}" ]]; then
   echo "[ERREUR] Script tio introuvable ou non exécutable: ${TIO_SCRIPT}" >&2
   exit 1
+fi
+
+if [[ ! -x "${UC_DOCKER_SCRIPT}" ]]; then
+  echo "[WARN] Script Docker use cases introuvable ou non exécutable: ${UC_DOCKER_SCRIPT}" >&2
+  echo "       Les backends Docker associés aux use cases ne seront pas démarrés automatiquement."
 fi
 
 mkdir -p "${BASE_LUA_DIR}"
@@ -140,6 +147,9 @@ source "${CONFIG_FILE}"
 
 : "${CERT_BASE_DIR:=${ROOT_DIR}/dockers/base_SXN/syslog-ng/cert}"
 
+# Répertoire des use cases (par défaut)
+: "${UC_DIR:=${ROOT_DIR}/config/UC}"
+
 # IPs par interface pour chaque gate (remplies à partir du .env)
 GATE_ENO0_IP=""
 GATE_ENO1_IP=""
@@ -151,6 +161,10 @@ RUNTIME_NTP_ENABLE_B=""
 # Mapping ports ↔ gates
 DEV_A=""
 DEV_B=""
+
+# Répertoire des use cases (par défaut)
+: "${UC_DIR:=${ROOT_DIR}/config/UC}"
+
 
 ########################################
 # 3. Détection des gates via tio
@@ -801,6 +815,9 @@ run_sxn_for_current_gate() {
       echo "  → Fin du check services pour gate ${GATE}"
       echo
     fi
+    if yes_no_default_no "Configurer un use case (scénario) sur la gate ${GATE} maintenant ?"; then
+      configure_use_cases_for_gate "${device}"
+    fi
   else
     echo "  [WARN] Échec de la configuration de la gate ${GATE} (code=${rc})."
     echo "         Regarde le log pour les détails : ${LOG_FILE}"
@@ -808,7 +825,138 @@ run_sxn_for_current_gate() {
 }
 
 ########################################
-# 8. Interlink NTP (maître/esclave)
+# 8. Use cases SXN (scénarios .cmd)
+########################################
+
+# Démarrage du backend Docker pour un use case, via UC_DOCKER_SCRIPT
+start_usecase_service() {
+  local slot="$1"
+  local proto="$2"
+  local ip="$3"
+  local port="$4"
+
+  echo "[USECASE] Service détecté: slot=${slot} proto=${proto} peer=${ip}:${port}"
+
+  if [[ ! -x "${UC_DOCKER_SCRIPT}" ]]; then
+    echo "[USECASE] UC_DOCKER_SCRIPT introuvable ou non exécutable (${UC_DOCKER_SCRIPT}), aucun backend Docker lancé pour ce use case."
+    return 0
+  fi
+
+  "${UC_DOCKER_SCRIPT}" "${slot}" "${proto}" "${ip}" "${port}"
+}
+
+sxn_push_cmd_file() {
+  local cmd_file="$1"
+  local device="$2"
+
+  if [[ -z "${SXN_CMD_LOADER_DIR:-}" ]]; then
+    echo "[WARN] SXN_CMD_LOADER_DIR n'est pas défini, impossible de charger le use case." >&2
+    echo "       Exemple: export SXN_CMD_LOADER_DIR=\"\$HOME/git_projects/sxn-cmd-loader\"" >&2
+    return 1
+  fi
+
+  if [[ ! -x "${SXN_CMD_LOADER_DIR}/run.sh" ]]; then
+    echo "[WARN] ${SXN_CMD_LOADER_DIR}/run.sh introuvable ou non exécutable." >&2
+    echo "       Va dans ${SXN_CMD_LOADER_DIR} et lance ./install.sh si besoin." >&2
+    return 1
+  fi
+
+  if [[ ! -f "${cmd_file}" ]]; then
+    echo "[WARN] Fichier use case .cmd introuvable: ${cmd_file}" >&2
+    return 1
+  fi
+
+  echo "[USECASE] Envoi du scénario ${cmd_file} sur gate ${GATE} via ${device}"
+
+  "${SXN_CMD_LOADER_DIR}/run.sh" \
+    --mode serial \
+    --device "${device}" \
+    --gate "${GATE}" \
+    --config-id 1 \
+    --user "${SXN_ADMIN_USER}" \
+    --password "${SXN_ADMIN_PASSWORD}" \
+    --cmd-file "${cmd_file}"
+}
+
+configure_use_cases_for_gate() {
+  local device="$1"
+  local uc_dir="${UC_DIR}"
+  local gate_prefix=""
+  local -a files=()
+  local f
+  local idx=1
+
+  case "${GATE}" in
+    A)
+      gate_prefix="GATE_A_USECASE_"
+      ;;
+    B)
+      gate_prefix="GATE_B_USECASE_"
+      ;;
+    *)
+      gate_prefix="GATE_${GATE}_USECASE_"
+      ;;
+  esac
+
+  if [[ ! -d "${uc_dir}" ]]; then
+    echo "[USECASE] Aucun répertoire ${uc_dir}, aucun use case pour gate ${GATE}."
+    return 0
+  fi
+
+  # Récupère tous les fichiers .cmd correspondant à la gate (triés)
+  while IFS= read -r -d '' f; do
+    files+=("$f")
+  done < <(find "${uc_dir}" -maxdepth 1 -type f -name "${gate_prefix}*.cmd" -print0 | sort -z)
+
+  if (( ${#files[@]} == 0 )); then
+    echo "[USECASE] Aucun use case trouvé pour gate ${GATE} dans ${uc_dir}."
+    return 0
+  fi
+
+  echo "[USECASE] Use cases disponibles pour gate ${GATE}:"
+  idx=1
+  for f in "${files[@]}"; do
+    printf "  [%d] %s\n" "${idx}" "$(basename "$f")"
+    ((idx++))
+  done
+
+  local selection
+  read -rp "Sélection des use cases à appliquer (ex: 1,3 ou all, vide pour annuler) : " selection
+
+  if [[ -z "${selection}" ]]; then
+    echo "[USECASE] Aucun use case sélectionné pour gate ${GATE}, on saute."
+    return 0
+  fi
+
+  local -a selected=()
+
+  if [[ "${selection}" =~ ^[Aa][Ll][Ll]$ ]]; then
+    selected=("${files[@]}")
+  else
+    IFS=',' read -r -a indices <<< "${selection}"
+    for idx_str in "${indices[@]}"; do
+      idx_str="${idx_str//[[:space:]]/}"
+      [[ -z "${idx_str}" ]] && continue
+      if [[ "${idx_str}" =~ ^[0-9]+$ ]]; then
+        local n=$((idx_str))
+        if (( n >= 1 && n <= ${#files[@]} )); then
+          selected+=("${files[n-1]}")
+        fi
+      fi
+    done
+    if (( ${#selected[@]} == 0 )); then
+      echo "[USECASE] Sélection invalide, aucun use case appliqué pour gate ${GATE}."
+      return 0
+    fi
+  fi
+
+  for f in "${selected[@]}"; do
+    sxn_push_cmd_file "${f}" "${device}"
+  done
+}
+
+########################################
+# 9. Interlink NTP (maître/esclave)
 ########################################
 
 configure_interlink_between_gates() {
@@ -907,7 +1055,7 @@ EOF
 }
 
 ########################################
-# 9. Stack Docker (syslog-ng, ntp, zabbix)
+# 10. Stack Docker (syslog-ng, ntp, zabbix)
 ########################################
 
 run_dockers() {
@@ -928,7 +1076,7 @@ run_dockers() {
 }
 
 ########################################
-# 10. Orchestration globale
+# 11. Orchestration globale
 ########################################
 
 main() {
@@ -1016,6 +1164,40 @@ main() {
     # 4) Interlink éventuel
     ####################################
     configure_interlink_between_gates
+
+  elif [[ "${MODE}" == "usecases" ]]; then
+    echo "=== Mode 'usecases' : configuration de scénarios SXN uniquement ==="
+
+    # Gate A
+    if [[ -n "${DEV_A}" ]]; then
+      echo "=== Use case gate A (${DEV_A}) ==="
+      GATE="A"
+      DEVICE="${DEV_A}"
+
+      if yes_no_default_yes "Configurer un use case sur la gate A (${DEV_A}) ?"; then
+        interactive_gate_credentials_params "${GATE}"
+        configure_use_cases_for_gate "${DEVICE}"
+      else
+        echo "  → Gate A (use case) ignorée."
+      fi
+      echo
+    fi
+
+    # Gate B
+    if [[ -n "${DEV_B}" ]]; then
+      echo "=== Use case gate B (${DEV_B}) ==="
+      GATE="B"
+      DEVICE="${DEV_B}"
+
+      if yes_no_default_yes "Configurer un use case sur la gate B (${DEV_B}) ?"; then
+        interactive_gate_credentials_params "${GATE}"
+        configure_use_cases_for_gate "${DEVICE}"
+      else
+        echo "  → Gate B (use case) ignorée."
+      fi
+      echo
+    fi
+
   else
     echo "[INFO] Mode 'dockers' : configuration SXN + interlink non lancée."
   fi
