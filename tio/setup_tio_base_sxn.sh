@@ -358,12 +358,13 @@ local SYSLOG_IFACE  = "${SYSLOG_IFACE}"
 local SYSLOG_SERVER = "${SYSLOG_SERVER}"
 local SYSLOG_PORT   = ${SYSLOG_PORT}
 
-local REMOTE_CERT_FILE_CONTENT  = "${REMOTE_CERT_FILE_CONTENT}"
-local REMOTE_CA_FILE_CONTENT    = "${REMOTE_CA_FILE_CONTENT}"
+-- chemins vers les fichiers PEM sur la machine hôte
+local REMOTE_CERT_PATH  = "${REMOTE_CERT_FILE}"
+local REMOTE_CA_PATH    = "${REMOTE_CA_FILE}"
 
-local CLIENT_CERT_FILE_CONTENT        = "${CLIENT_CERT_FILE_CONTENT}"
-local CLIENT_CA_FILE_CONTENT          = "${CLIENT_CA_FILE_CONTENT}"
-local CLIENT_PRIVATE_KEY_FILE_CONTENT = "${CLIENT_PRIVATE_KEY_FILE_CONTENT}"
+local CLIENT_CERT_PATH  = "${CLIENT_CERT_FILE}"
+local CLIENT_CA_PATH    = "${CLIENT_CA_FILE}"
+local CLIENT_KEY_PATH   = "${CLIENT_PRIVATE_KEY_FILE}"
 
 local SYSTEM_PROMPT = "SecOS-" .. GATE .. ">"
 local CONFIG_PROMPT = "SecOS-" .. GATE .. " \\\(config\\\)>"
@@ -371,6 +372,39 @@ local CONFIG_PROMPT = "SecOS-" .. GATE .. " \\\(config\\\)>"
 local IMPORT_REMOTE_BLOCK1 = "Paste certificate here then type Ctrl"
 local IMPORT_REMOTE_BLOCK2 = "Paste certificate chain here then type Ctrl"
 local IMPORT_REMOTE_BLOCK3 = "Paste key here then type Ctrl"
+
+-- Lit un fichier PEM local et l'envoie **ligne par ligne** sur la console SXN
+local function send_pem_file(path)
+  local f, err = io.open(path, "r")
+  if not f then
+    print("ERROR: cannot open " .. path .. ": " .. tostring(err))
+    exit(1)
+  end
+
+  local data = f:read("*a")
+  f:close()
+
+  if not data or data == "" then
+    print("ERROR: empty PEM file: " .. path)
+    exit(1)
+  end
+
+  -- on garde en mémoire si le fichier se termine par un newline
+  local ends_with_nl = (data:match("\n$") ~= nil)
+
+  -- parse ligne par ligne, tolérant \n / \r\n
+  for line in data:gmatch("([^\r\n]*)\r?\n") do
+    -- on envoie aussi les lignes vides
+    write(line .. "\\n")
+    msleep(30)
+  end
+
+  -- si le PEM ne se termine pas par un \n, on force une ligne vide supplémentaire
+  if not ends_with_nl then
+    write("\\n")
+    msleep(30)
+  end
+end
 
 msleep(500)
 write("\\n")
@@ -404,61 +438,60 @@ expect(CONFIG_PROMPT)
 write("syslog set remote tls mode on\\n")
 expect(CONFIG_PROMPT)
 
--- Import remote cert pem
+--------------------------------------------------
+-- 1) Import remote cert PEM
+--------------------------------------------------
 write("syslog import remote cert pem\\n")
 expect(IMPORT_REMOTE_BLOCK1)
 
-for line in REMOTE_CERT_FILE_CONTENT:gmatch("([^\\n]*)\\n") do
-  write(line .. "\\n")
-  msleep(20)
-end
+send_pem_file(REMOTE_CERT_PATH)
 
+write("\\4")   -- Ctrl+D
 msleep(500)
-write("\\4")
+
+--------------------------------------------------
+-- 2) Import remote CA chain
+--------------------------------------------------
 expect(IMPORT_REMOTE_BLOCK2)
 
-for line in REMOTE_CA_FILE_CONTENT:gmatch("([^\\n]*)\\n") do
-  write(line .. "\\n")
-  msleep(20)
-end
+send_pem_file(REMOTE_CA_PATH)
 
-msleep(500)
 write("\\4")
+msleep(500)
+
 expect(CONFIG_PROMPT)
 
--- Auth client par cert
+--------------------------------------------------
+-- 3) Auth client par cert
+--------------------------------------------------
 write("syslog set client tls auth cert\\n")
 expect(CONFIG_PROMPT)
 
--- Import client cert pem
+-- Import client cert
 write("syslog import client cert pem\\n")
 expect(IMPORT_REMOTE_BLOCK1)
 
-for line in CLIENT_CERT_FILE_CONTENT:gmatch("([^\\n]*)\\n") do
-  write(line .. "\\n")
-  msleep(20)
-end
+send_pem_file(CLIENT_CERT_PATH)
 
-msleep(500)
 write("\\4")
+msleep(500)
+
+-- Import client key
 expect(IMPORT_REMOTE_BLOCK3)
 
-for line in CLIENT_PRIVATE_KEY_FILE_CONTENT:gmatch("([^\\n]*)\\n") do
-  write(line .. "\\n")
-  msleep(20)
-end
+send_pem_file(CLIENT_KEY_PATH)
 
-msleep(500)
 write("\\4")
+msleep(500)
+
+-- Import client CA chain
 expect(IMPORT_REMOTE_BLOCK2)
 
-for line in CLIENT_CA_FILE_CONTENT:gmatch("([^\\n]*)\\n") do
-  write(line .. "\\n")
-  msleep(20)
-end
+send_pem_file(CLIENT_CA_PATH)
 
-msleep(500)
 write("\\4")
+msleep(500)
+
 expect(CONFIG_PROMPT)
 
 write("exit\\n")

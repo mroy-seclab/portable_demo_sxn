@@ -938,8 +938,6 @@ main() {
   echo "Log file    : ${LOG_FILE}"
   echo
 
-  # 0) Prompts globaux (creds SXN)
-  prompt_runtime_params
 
   # 1) Découverte des gates / mapping A/B
   discover_gates
