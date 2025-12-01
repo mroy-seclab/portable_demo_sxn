@@ -443,6 +443,7 @@ expect(CONFIG_PROMPT)
 --------------------------------------------------
 write("syslog import remote cert pem\\n")
 expect(IMPORT_REMOTE_BLOCK1)
+msleep(100)
 
 send_pem_file(REMOTE_CERT_PATH)
 
@@ -453,6 +454,7 @@ msleep(500)
 -- 2) Import remote CA chain
 --------------------------------------------------
 expect(IMPORT_REMOTE_BLOCK2)
+msleep(100)
 
 send_pem_file(REMOTE_CA_PATH)
 
@@ -470,6 +472,7 @@ expect(CONFIG_PROMPT)
 -- Import client cert
 write("syslog import client cert pem\\n")
 expect(IMPORT_REMOTE_BLOCK1)
+msleep(100)
 
 send_pem_file(CLIENT_CERT_PATH)
 
@@ -478,6 +481,7 @@ msleep(500)
 
 -- Import client key
 expect(IMPORT_REMOTE_BLOCK3)
+msleep(100)
 
 send_pem_file(CLIENT_KEY_PATH)
 
@@ -486,6 +490,7 @@ msleep(500)
 
 -- Import client CA chain
 expect(IMPORT_REMOTE_BLOCK2)
+msleep(100)
 
 send_pem_file(CLIENT_CA_PATH)
 
