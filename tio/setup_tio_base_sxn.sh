@@ -407,6 +407,7 @@ expect(CONFIG_PROMPT)
 -- Import remote cert pem
 write("syslog import remote cert pem\\n")
 expect(IMPORT_REMOTE_BLOCK1)
+msleep(100)
 
 for line in REMOTE_CERT_FILE_CONTENT:gmatch("([^\\n]*)\\n") do
   write(line .. "\\n")
@@ -416,6 +417,7 @@ end
 msleep(500)
 write("\\4")
 expect(IMPORT_REMOTE_BLOCK2)
+msleep(100)
 
 for line in REMOTE_CA_FILE_CONTENT:gmatch("([^\\n]*)\\n") do
   write(line .. "\\n")
@@ -433,6 +435,7 @@ expect(CONFIG_PROMPT)
 -- Import client cert pem
 write("syslog import client cert pem\\n")
 expect(IMPORT_REMOTE_BLOCK1)
+msleep(100)
 
 for line in CLIENT_CERT_FILE_CONTENT:gmatch("([^\\n]*)\\n") do
   write(line .. "\\n")
@@ -442,6 +445,7 @@ end
 msleep(500)
 write("\\4")
 expect(IMPORT_REMOTE_BLOCK3)
+msleep(100)
 
 for line in CLIENT_PRIVATE_KEY_FILE_CONTENT:gmatch("([^\\n]*)\\n") do
   write(line .. "\\n")
@@ -451,6 +455,7 @@ end
 msleep(500)
 write("\\4")
 expect(IMPORT_REMOTE_BLOCK2)
+msleep(100)
 
 for line in CLIENT_CA_FILE_CONTENT:gmatch("([^\\n]*)\\n") do
   write(line .. "\\n")
